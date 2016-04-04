@@ -95,6 +95,7 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
+  p->nice = 20;
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -145,6 +146,7 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
+  np->nice = proc->nice;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -463,4 +465,39 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+//return process' nice value
+int
+getnice(int pid){
+	struct proc *p;
+
+	acquire(&ptable.lock);
+	for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
+		if(p->pid == pid){
+			release(&ptable.lock);
+			return p->nice;
+		}
+	}
+	release(&ptable.lock);
+	return -1;
+}
+
+//set process' nice value to given value
+int 
+setnice(int pid, int value){
+	struct proc *p;
+
+	acquire(&ptable.lock);
+	for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
+		if(p->pid == pid){
+			p->nice = value;
+			p->state = RUNNABLE;
+			sched();
+			release(&ptable.lock);
+			return 0;
+		}
+	}
+	release(&ptable.lock);
+	return -1;
 }
