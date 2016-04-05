@@ -268,6 +268,7 @@ void
 scheduler(void)
 {
   struct proc *p;
+  int priority;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -275,6 +276,16 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+    priority=40;
+    //calculate lowest nice value(highest priority)
+     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+  		if( (p->state != RUNNABLE) ){
+  			continue;
+  		} else if( p->nice < priority ){
+  			priority = p->nice;
+  		}
+	 }
+  
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
@@ -282,20 +293,30 @@ scheduler(void)
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, proc->context);
-      switchkvm();
+      if(p->nice == priority){
+	      proc = p;
+	      switchuvm(p);
+	      p->state = RUNNING;
+	      swtch(&cpu->scheduler, proc->context);
+	      switchkvm();
+ 	  } else{
+ 	  	continue;
+ 	  }
+
+      //if process changed to lower priority by setnice
+      if(proc->nice < priority){
+      	break;
+      }
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       proc = 0;
     }
-    release(&ptable.lock);
 
+    release(&ptable.lock);
   }
 }
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state.
@@ -492,7 +513,9 @@ setnice(int pid, int value){
 	for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
 		if(p->pid == pid){
 			p->nice = value;
-			p->state = RUNNABLE;
+			if(proc->state == RUNNING){
+				proc->state = RUNNABLE;
+			}
 			sched();
 			release(&ptable.lock);
 			return 0;
