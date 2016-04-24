@@ -96,32 +96,3 @@ sys_halt(void)
 	outw(0xB004, 0x0|0x2000);
 	return 0;
 }
-
-int
-sys_yield(void)
-{
-	yield();
-	return 0;
-}
-
-int
-sys_getnice(void)
-{
-	int pid;
-	
-	if(argint(0,&pid) < 0)
-		return -1;
-	return getnice(pid);
-}
-
-int
-sys_setnice(void)
-{
-	int pid, value;
-
-	if((argint(0,&pid)||argint(1,&value)) < 0)
-		return -1;
-	if(value<0 || value >40)
-		return -1;
-	return setnice(pid,value);
-}

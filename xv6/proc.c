@@ -95,7 +95,6 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
-  p->nice = 20;
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -146,7 +145,6 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
-  np->nice = proc->nice;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -268,7 +266,6 @@ void
 scheduler(void)
 {
   struct proc *p;
-  int priority;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -276,16 +273,6 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    priority=40;
-    //calculate lowest nice value(highest priority)
-     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-  		if( (p->state != RUNNABLE) ){
-  			continue;
-  		} else if( p->nice < priority ){
-  			priority = p->nice;
-  		}
-	 }
-  
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
@@ -293,30 +280,20 @@ scheduler(void)
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      if(p->nice == priority){
-	      proc = p;
-	      switchuvm(p);
-	      p->state = RUNNING;
-	      swtch(&cpu->scheduler, proc->context);
-	      switchkvm();
- 	  } else{
- 	  	continue;
- 	  }
-
-      //if process changed to lower priority by setnice
-      if(proc->nice < priority){
-      	break;
-      }
+      proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      swtch(&cpu->scheduler, proc->context);
+      switchkvm();
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       proc = 0;
     }
-
     release(&ptable.lock);
+
   }
 }
-
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state.
@@ -486,41 +463,4 @@ procdump(void)
     }
     cprintf("\n");
   }
-}
-
-//return process' nice value
-int
-getnice(int pid){
-	struct proc *p;
-
-	acquire(&ptable.lock);
-	for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
-		if(p->pid == pid){
-			release(&ptable.lock);
-			return p->nice;
-		}
-	}
-	release(&ptable.lock);
-	return -1;
-}
-
-//set process' nice value to given value
-int 
-setnice(int pid, int value){
-	struct proc *p;
-
-	acquire(&ptable.lock);
-	for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
-		if(p->pid == pid){
-			p->nice = value;
-			if(proc->state == RUNNING){
-				proc->state = RUNNABLE;
-			}
-			sched();
-			release(&ptable.lock);
-			return 0;
-		}
-	}
-	release(&ptable.lock);
-	return -1;
 }

@@ -19,10 +19,7 @@ main(void)
   dup(0);  // stdout
   dup(0);  // stderr
 
-  printf(1, "SWE3004: Operating Systems\n");
-
   for(;;){
-    printf(1, "init: starting sh\n");
     pid = fork();
     if(pid < 0){
       printf(1, "init: fork failed\n");
@@ -33,7 +30,6 @@ main(void)
       printf(1, "init: exec sh failed\n");
       exit();
     }
-    while((wpid=wait()) >= 0 && wpid != pid)
-      printf(1, "zombie!\n");
+    while((wpid=wait()) >= 0 && wpid != pid);
   }
 }

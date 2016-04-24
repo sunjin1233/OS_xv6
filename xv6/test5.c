@@ -1,28 +1,33 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
+#include "memlayout.h"
 
-int main(int argc, char **argv){
-	int pid;
-	int ppid;
+void recursion(int n){
+	if(n>0)
+		recursion(n-1);
+}
 
-	setnice(1, 40);
+int
+main(int argc, char **argv)
+{
+	int ppid, pid;
 
-	setnice(getpid(), 20);
+	// stack growth after growing process size
+	printf(1, "TEST5: ");
+
+	sbrk(10000);
 
 	ppid = getpid();
 	pid = fork();
 
 	if(pid==0){
-		printf(1, "2\n");
-		setnice(ppid, 10);
-		printf(1, "4\n");
+		recursion(500);
+		printf(1, "OK\n");
+		kill(ppid);
+		exit();
 	}
-	else{
-		printf(1, "1\n");
-		setnice(pid, 15);
-		printf(1, "3\n");
-	}
-
+	wait();
+	printf(1, "FAIL\n");
 	exit();
 }
