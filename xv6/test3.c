@@ -1,32 +1,33 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-#include "memlayout.h"
 
-void recursion(int n){
-	if(n>0)
-		recursion(n-1);
-}
+int global = 3;
 
 int
 main(int argc, char **argv)
 {
-	int ppid, pid;
+	int before, after;
+	int pid;
 
-	// stack growth test
 	printf(1, "TEST3: ");
+	
+	before = freemem();
 
-	ppid = getpid();
 	pid = fork();
-
-	if(pid==0){
-		recursion(500);
-		recursion(500);
-		kill(ppid);
-		printf(1, "OK\n");
+	if(pid == 0){
+		before = freemem();
+		global = 4;
+		after = freemem();
+		if(before - after == 1)
+			printf(1, "OK\n");
+		else
+			printf(1, "WRONG\n");
 		exit();
 	}
-	wait();
-	printf(1, "FAIL\n");
+	else{
+		wait();
+	}
+
 	exit();
 }

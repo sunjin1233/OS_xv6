@@ -173,6 +173,10 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_halt\
+	_test1\
+	_test2\
+	_test3\
+	_test4\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -235,7 +239,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 
 # SKKU operating system
 PROJECTNUM=4
-STUDENTID=2011311671
+STUDENTID=2013312534
 
 # DO NOT EDIT
 tarball:

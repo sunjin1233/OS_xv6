@@ -10,6 +10,8 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 struct segdesc gdt[NSEGS];
+char counter[PHYSTOP >> PGSHIFT];
+
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -188,6 +190,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   mem = kalloc();
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, v2p(mem), PTE_W|PTE_U);
+  ++counter[v2p(mem) >> PGSHIFT];
   memmove(mem, init, sz);
 }
 
@@ -238,6 +241,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     }
     memset(mem, 0, PGSIZE);
     mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
+    ++counter[v2p(mem) >> PGSHIFT];
   }
   return newsz;
 }
@@ -264,8 +268,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
-      char *v = p2v(pa);
-      kfree(v);
+      if(--counter[pa >> PGSHIFT] == 0){
+	char *v = p2v(pa);
+      	kfree(v);
+      }
       *pte = 0;
     }
   }
@@ -312,7 +318,6 @@ copyuvm(pde_t *pgdir, uint sz)
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
-  char *mem;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -321,19 +326,48 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
+    *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
+    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
-    memmove(mem, (char*)p2v(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, v2p(mem), flags) < 0)
-      goto bad;
+    ++counter[pa >> PGSHIFT];
   }
   return d;
 
 bad:
   freevm(d);
   return 0;
+}
+
+//pagefault handler
+void
+handler_pgflt(void){
+  
+  uint va = rcr2();
+  uint pa;
+  pte_t *pte;
+  char *mem;
+
+  if( (pte = walkpgdir(proc->pgdir, (void*)va, 0)) == 0 ){
+    proc->killed = 1;
+    return;
+  }
+
+  if(*pte & PTE_W){
+    panic("pagefault");
+  }else{
+    pa = PTE_ADDR(*pte);
+    if(counter[pa >> PGSHIFT] == 1){
+      *pte |= PTE_W;
+    } else if(counter[pa >> PGSHIFT] > 1){
+      mem = kalloc();
+      memmove(mem, (char*)p2v(pa), PGSIZE);
+      --counter[pa >> PGSHIFT];
+      ++counter[v2p(mem) >> PGSHIFT];
+      *pte = v2p(mem) | PTE_P | PTE_W | PTE_U; 
+    }
+  } 
 }
 
 //PAGEBREAK!

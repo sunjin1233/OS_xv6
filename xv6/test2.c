@@ -1,30 +1,30 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-#include "memlayout.h"
 
 int
 main(int argc, char **argv)
 {
+	int before, after;
 	int pid;
 
-	// fork process with deallocated stacks after growing process size
 	printf(1, "TEST2: ");
-
-	sbrk(10000);
+	
+	before = freemem();
 
 	pid = fork();
-
-	if(pid<0){
-		printf(1, "FAIL\n");
+	if(pid == 0){
 		exit();
 	}
-
-	if(pid==0)
-		exit();
-	else
+	else{
 		wait();
+	}
 
-	printf(1, "OK\n");
+	after = freemem();
+	if(before == after)
+		printf(1, "OK\n");
+	else
+		printf(1, "WRONG\n");
+
 	exit();
 }

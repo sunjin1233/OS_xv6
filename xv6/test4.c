@@ -1,31 +1,42 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-#include "memlayout.h"
 
-void recursion(int n){
-	if(n>0)
-		recursion(n-1);
-}
+int dump[10000000];
 
 int
 main(int argc, char **argv)
 {
-	int ppid, pid;
+	int i;
+	int pid;
+	int before, after;
 
-	// stack overflow test
 	printf(1, "TEST4: ");
 
-	ppid = getpid();
-	pid = fork();
+	for(i=0;i<10;i++){
+		before = freemem();
+		pid = fork();
+		if(pid == 0)
+			break;
+		after = freemem();
 
-	if(pid==0){
-		recursion(1000);
-		printf(1, "FAIL\n");
-		kill(ppid);
+		if(before - after == 1){
+			printf(1, "WRONG\n");
+			exit();
+		}
+	}
+
+	if(pid > 0)
+		sleep(100);
+
+	if(pid == 0){
 		exit();
 	}
-	wait();
-	printf(1, "OK\n");
+	else{
+		for(i=0;i<10;i++)
+			wait();
+		printf(1, "OK\n");
+	}
+
 	exit();
 }
