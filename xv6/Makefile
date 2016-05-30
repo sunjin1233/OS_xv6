@@ -176,6 +176,13 @@ UPROGS=\
 	_halt\
 	_threadtest\
 	_test1\
+	_test2\
+	_test3\
+	_test4\
+	_test5\
+	_test6\
+	_test7\
+	_test8\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

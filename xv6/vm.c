@@ -170,8 +170,14 @@ switchuvm(struct proc *p)
   cpu->ts.ss0 = SEG_KDATA << 3;
   cpu->ts.esp0 = (uint)proc->kstack + KSTACKSIZE;
   ltr(SEG_TSS << 3);
-  if(p->pgdir == 0)
-    panic("switchuvm: no pgdir");
+  if(p->tref == 0){
+    if(p->pgdir == 0)
+      panic("switchuvm: no pgdir");
+  } else{
+    if(p->tref->pgdir == 0){
+      panic("switchuvm: no pgdir");
+    }
+  }
   lcr3(v2p(p->pgdir));  // switch to new address space
   popcli();
 }

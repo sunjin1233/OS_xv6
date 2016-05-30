@@ -1,33 +1,54 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-#include "memlayout.h"
 
-void recursion(int n){
-	if(n>0)
-		recursion(n-1);
+#define NTHREAD 7
+
+void *stack[NTHREAD];
+int tid[NTHREAD];
+void *retval[NTHREAD];
+
+void *thread(void *arg){
+	thread_exit((void *)getpid());
 }
 
 int
 main(int argc, char **argv)
 {
-	int ppid, pid;
+	int i;
+	int pid = getpid();
 
-	// stack growth after growing process size
 	printf(1, "TEST5: ");
 
-	sbrk(10000);
+	for(i=0;i<NTHREAD;i++)
+		stack[i] = malloc(4096);
 
-	ppid = getpid();
-	pid = fork();
-
-	if(pid==0){
-		recursion(500);
-		printf(1, "OK\n");
-		kill(ppid);
-		exit();
+	for(i=0;i<NTHREAD; i++){
+		tid[i] = thread_create(thread, 30, 0, stack[i]);
+		if(tid[i] == -1){
+			printf(1, "WRONG\n");
+			exit();
+		}
 	}
-	wait();
-	printf(1, "FAIL\n");
+
+	for(i=0;i<NTHREAD;i++){
+		if(thread_join(tid[i], &retval[i]) == -1){
+			printf(1, "WRONG\n");
+			exit();
+		}
+	}
+
+	for(i=0;i<NTHREAD;i++){
+		if(pid != (int)retval[i]){
+			printf(1, "WRONG\n");
+			exit();
+		}
+	}
+
+	for(i=0;i<NTHREAD;i++)
+		free(stack[i]);
+
+	printf(1, "OK\n");
+
 	exit();
 }

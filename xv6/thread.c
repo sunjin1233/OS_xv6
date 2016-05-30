@@ -7,60 +7,74 @@
 #include "proc.h"
 #include "spinlock.h"
 
+extern void forkret(void);
+extern void trapret(void);
+
+
+extern struct _ptable {
+  struct spinlock lock;
+  struct proc proc[NPROC];
+} ptable;
+
 int thread_create(void *(*function)(void *), int priority, void *arg, void *stack){
-	int i, valid=0;
+	struct proc *p;
 	char *sp;
 
-	for(i=0; i<8; i++){
-		if(proc->tp[i].state == UNUSED){//if thread
-			valid++;
-			break;
-		}
-	}
+	  //cli();
 
-	if(valid != 0){
-		//fill thread state
-		proc->tp[i].ta = 1;
-		proc->tp[i].state = RUNNABLE;
-		if((proc->tp[i].priority <0) || (proc->tp[i].priority>40){
-		    proc->tp[i].state = UNUSED;
-		    return -1;
-		}
-		proc->tp[i].priority = priority;
-		proc->tp[i].tid = proc->threadNumber;
-		proc->threadNumber++;
+	  acquire(&ptable.lock);
+	  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+	    if(p->state == UNUSED)
+	      goto found;
+	  release(&ptable.lock);
+	  return -1;
 
-		  // Allocate kernel stack.
-		  if((proc->tp[i].kstack = kalloc()) == 0){
-		    proc->tp[i].state = UNUSED;
-		    return -1;
-		  }
+	found:
+	  p->state = RUNNABLE;
+	  release(&ptable.lock);
 
-		  sp = proc->tp[i].kstack + KSTACKSIZE;
-		  
-		  // Leave room for trap frame.
-		  sp -= sizeof *(proc->tp[i].tf);
-		  proc->tp[i].tf = (struct trapframe*)sp;
-		  
-		  // Set up new context to start executing at forkret,
-		  // which returns to trapret.
-		  sp -= 4;
-		  *(uint*)sp = (uint)trapret;
+	  if((priority <0) || (priority>40)){//priority boundary check
+	    return -1;
+	  }
 
-		  sp -= sizeof *(proc->tp[i].context);
-		  proc->tp[i].context = (struct context*)sp;
-		  memset(proc->tp[i].context, 0, sizeof *(proc->tp[i].context));
-		  proc->tp[i].context->eip = (uint)forkret;
+	  //setting priority
+	  p->priority = priority;
 
-		  //set register by argument
-		  stack = arg;
-		  proc->tp[i].tf->eip = function;
-		  proc->tp[i].tf->esp = stack;
+	  // Allocate kernel stack.
+	  if((p->kstack = kalloc()) == 0){
+	    p->state = UNUSED;
+	    return -1;
+	  }
+	  sp = p->kstack + KSTACKSIZE;
+	  
+	  // Leave room for trap frame.
+	  sp -= sizeof *p->tf;
+	  p->tf = (struct trapframe*)sp;
+	  
+	  // Set up new context to start executing at forkret,
+	  // which returns to trapret.
+	  sp -= 4;
+	  *(uint*)sp = (uint)trapret;
 
-		  return proc->tp[i].tid
- 	}
+	  sp -= sizeof *p->context;
+	  p->context = (struct context*)sp;
+	  memset(p->context, 0, sizeof *p->context);
+	  p->context->eip = (uint)forkret;
 
-	return -1;//error
+	  //referencing main thread
+	  p->tref = proc;
+
+	  //setting tid
+	  p->tid = proc->tidcounter++;
+
+	  //set register by argument
+      stack = arg;
+	  p->tf->eip = *(uint *)function;
+	  p->tf->esp = *((uint*)stack+4);
+
+	  //sti();
+
+	  return p->tid;
 }
 
 void thread_exit(void *retval){
