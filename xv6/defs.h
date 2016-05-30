@@ -9,7 +9,6 @@ struct spinlock;
 struct stat;
 struct superblock;
 
-
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -120,6 +119,13 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int getpid(void);
+
+// thread.c
+int thread_create(void *(*)(void *), int, void *, void *);
+void thread_exit(void *);
+int thread_join(int, void **);
+int gettid(void);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -180,7 +186,6 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
-void		handler_pgflt(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

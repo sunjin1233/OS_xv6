@@ -90,8 +90,8 @@ exec(char *path, char **argv)
   oldpgdir = proc->pgdir;
   proc->pgdir = pgdir;
   proc->sz = sz;
-  proc->tf->eip = elf.entry;  // main
-  proc->tf->esp = sp;
+  proc->thread_proc[0].tf->eip = elf.entry;  // main
+  proc->thread_proc[0].tf->esp = sp;
   switchuvm(proc);
   freevm(oldpgdir);
   return 0;

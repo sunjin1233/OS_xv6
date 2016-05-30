@@ -7,9 +7,9 @@
 #include "proc.h"
 #include "spinlock.h"
 
-struct {
-  struct spinlock lock;
-  struct proc proc[NPROC];
+struct _ptable {
+	struct spinlock lock;
+	struct proc proc[NPROC];
 } ptable;
 
 static struct proc *initproc;
@@ -36,6 +36,7 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
+  int valid=0;
 
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
@@ -49,28 +50,47 @@ found:
   p->pid = nextpid++;
   release(&ptable.lock);
 
-  // Allocate kernel stack.
-  if((p->kstack = kalloc()) == 0){
-    p->state = UNUSED;
-    return 0;
-  }
-  sp = p->kstack + KSTACKSIZE;
-  
-  // Leave room for trap frame.
-  sp -= sizeof *p->tf;
-  p->tf = (struct trapframe*)sp;
-  
-  // Set up new context to start executing at forkret,
-  // which returns to trapret.
-  sp -= 4;
-  *(uint*)sp = (uint)trapret;
+	for(i=0; i<8; i++){
+		if(proc->thread_proc[i].tstate == UNUSED){//if thread
+			valid++;
+			break;
+		}
+	}
 
-  sp -= sizeof *p->context;
-  p->context = (struct context*)sp;
-  memset(p->context, 0, sizeof *p->context);
-  p->context->eip = (uint)forkret;
+  if(valid != 0){
+		//fill thread state
+		p->thread_proc[i].ta = 1;
+		p->thread_proc[i].tstate = EMBRYO;
+		p->thread_proc[i].tid = proc->threadNumber;
+		p->threadNumber++;
+		p->killed = 0;
 
-  return p;
+		  // Allocate kernel stack.
+		  if((p->thread_proc[i].kstack = kalloc()) == 0){
+		    p->thread_proc[i].tstate = UNUSED;
+		    return 0;
+		  }
+
+		  sp = p->thread_proc[i].kstack + KSTACKSIZE;
+		  
+		  // Leave room for trap frame.
+		  sp -= sizeof *(p->thread_proc[i].tf);
+		  p->thread_proc[i].tf = (struct trapframe*)sp;
+		  
+		  // Set up new context to start executing at forkret,
+		  // which returns to trapret.
+		  sp -= 4;
+		  *(uint*)sp = (uint)trapret;
+
+		  sp -= sizeof *(p->thread_proc[i].context);
+		  p->thread_proc[i].context = (struct context*)sp;
+		  memset(p->thread_proc[i].context, 0, sizeof *(p->thread_proc[i].context));
+		  p->thread_proc[i].context->eip = (uint)forkret;
+
+		  return p;
+ 	}
+
+  return 0;
 }
 
 //PAGEBREAK: 32
@@ -88,13 +108,16 @@ userinit(void)
   inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
   p->sz = PGSIZE;
   memset(p->tf, 0, sizeof(*p->tf));
-  p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
-  p->tf->ds = (SEG_UDATA << 3) | DPL_USER;
-  p->tf->es = p->tf->ds;
-  p->tf->ss = p->tf->ds;
-  p->tf->eflags = FL_IF;
-  p->tf->esp = PGSIZE;
-  p->tf->eip = 0;  // beginning of initcode.S
+  p->thread_proc[0].tf->cs = (SEG_UCODE << 3) | DPL_USER;
+  p->thread_proc[0].tf->ds = (SEG_UDATA << 3) | DPL_USER;
+  p->thread_proc[0].tf->es = p->tf->ds;
+  p->thread_proc[0].tf->ss = p->tf->ds;
+  p->thread_proc[0].tf->eflags = FL_IF;
+  p->thread_proc[0].tf->esp = PGSIZE;
+  p->thread_proc[0].tf->eip = 0;  // beginning of initcode.S
+  p->thread_proc[0].priority =20;
+  p->thread_proc[0].tid=0;
+  p->thread_proc[0].tstate = RUNNABLE;  
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -463,4 +486,8 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+int getpid(void){
+	return proc->pid;
 }
