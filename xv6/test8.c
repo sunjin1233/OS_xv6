@@ -55,7 +55,15 @@ main(int argc, char **argv)
 		printf(1, "WRONG\n");
 		exit();
 	}
+	if(thread_join(tid[0], &retval[0]) == -1){
+		printf(1, "WRONG\n");
+		exit();
+	}
 	if((tid[1] = thread_create(thread2, 10, (void *)fd, stack[1])) == -1){
+		printf(1, "WRONG\n");
+		exit();
+	}
+	if(thread_join(tid[1], &retval[1]) == -1){
 		printf(1, "WRONG\n");
 		exit();
 	}

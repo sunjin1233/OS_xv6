@@ -1,4 +1,3 @@
-
 // Segments in proc->gdt.
 #define NSEGS     7
 
@@ -67,12 +66,13 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
   int priority;
   int tid;
   int refcounter;
-  struct proc *tref;
   int tidcounter;
   void *stack;
+  struct proc *tref;
 };
 
 // Process memory is laid out contiguously, low addresses first:

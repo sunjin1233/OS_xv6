@@ -24,14 +24,7 @@ argfd(int n, int *pfd, struct file **pf)
 
   if(argint(n, &fd) < 0)
     return -1;
-
-  if(proc->tref == 0){//main thread
-      f=proc->ofile[fd];
-  } else{
-      f=proc->tref->ofile[fd];
-  }
-
-  if(fd < 0 || fd >= NOFILE || f == 0)
+  if(fd < 0 || fd >= NOFILE || (f=proc->ofile[fd]) == 0)
     return -1;
   if(pfd)
     *pfd = fd;
@@ -48,11 +41,8 @@ fdalloc(struct file *f)
   int fd;
 
   for(fd = 0; fd < NOFILE; fd++){
-    if( (proc->ofile[fd] == 0) && (proc->tref == 0) ){
+    if(proc->ofile[fd] == 0){
       proc->ofile[fd] = f;
-      return fd;
-    } else if( (proc->tref != 0) && (proc->tref->ofile[fd] == 0) ){
-      proc->tref->ofile[fd] = f;
       return fd;
     }
   }
@@ -105,11 +95,7 @@ sys_close(void)
   
   if(argfd(0, &fd, &f) < 0)
     return -1;
-  if( proc->tref == 0 ){
-    proc->ofile[fd] = 0;
-  } else {
-    proc->tref->ofile[fd] = 0;
-  }
+  proc->ofile[fd] = 0;
   fileclose(f);
   return 0;
 }
@@ -444,13 +430,8 @@ sys_pipe(void)
     return -1;
   fd0 = -1;
   if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
-    if(fd0 >= 0){
-      if( proc->tref == 0 ){
-        proc->ofile[fd0] = 0;
-      } else {
-        proc->tref->ofile[fd0] = 0;
-      }
-    }
+    if(fd0 >= 0)
+      proc->ofile[fd0] = 0;
     fileclose(rf);
     fileclose(wf);
     return -1;
