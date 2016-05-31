@@ -7,83 +7,164 @@
 #include "proc.h"
 #include "spinlock.h"
 
-extern void forkret(void);
-extern void trapret(void);
-
+extern struct proc* allocproc(void);
 
 extern struct _ptable {
-  struct spinlock lock;
-  struct proc proc[NPROC];
+	struct spinlock lock;
+	struct proc proc[NPROC];
 } ptable;
 
 int thread_create(void *(*function)(void *), int priority, void *arg, void *stack){
 	struct proc *p;
-	char *sp;
+	void *sRet, *sArg;
+	int tid;
 
-	  //cli();
+	if((p = allocproc()) == 0){
+		return -1;
+	}
 
-	  acquire(&ptable.lock);
-	  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-	    if(p->state == UNUSED)
-	      goto found;
-	  release(&ptable.lock);
-	  return -1;
+	if(proc->refcounter >= 7){
+		return -1;
+	}
 
-	found:
-	  p->state = RUNNABLE;
-	  release(&ptable.lock);
+	p->pid = proc->pid;
+	p->tref = proc;
+	proc->refcounter++;
 
-	  if((priority <0) || (priority>40)){//priority boundary check
-	    return -1;
-	  }
+	p->pgdir = proc->pgdir;
+	p->sz = proc->sz;
+	p->parent = proc->parent;
+	*p->tf = *proc->tf;
+	p->stack = stack;
 
-	  //setting priority
-	  p->priority = priority;
+	sRet = stack + 4096 - 2 * sizeof(void*);
+	*(uint *)sRet = 0xFFFFFFFF;
 
-	  // Allocate kernel stack.
-	  if((p->kstack = kalloc()) == 0){
-	    p->state = UNUSED;
-	    return -1;
-	  }
-	  sp = p->kstack + KSTACKSIZE;
-	  
-	  // Leave room for trap frame.
-	  sp -= sizeof *p->tf;
-	  p->tf = (struct trapframe*)sp;
-	  
-	  // Set up new context to start executing at forkret,
-	  // which returns to trapret.
-	  sp -= 4;
-	  *(uint*)sp = (uint)trapret;
+	sArg = stack + 4096 - sizeof(void*);
+	*(uint *)sArg = (uint)arg;
 
-	  sp -= sizeof *p->context;
-	  p->context = (struct context*)sp;
-	  memset(p->context, 0, sizeof *p->context);
-	  p->context->eip = (uint)forkret;
+	p->tf->esp = (int)stack;
+	memmove((void *)p->tf->esp, stack, PGSIZE);
+	p->tf->esp += PGSIZE - 2*sizeof(void *);
+	p->tf->ebp = p->tf->esp;
+	p->tf->eip = (uint)function;
 
-	  //referencing main thread
-	  p->tref = proc;
+	//just copying ofile like fork
+	/*for(i=0; i < NOFILE; i++){
+		if(proc->ofile[i])
+			p->ofile[i] = filedup(proc->ofile[i]);
+	}*/
 
-	  //setting tid
-	  p->tid = proc->tidcounter++;
+	p->cwd = idup(proc->cwd);
+	p->tf->eax = 0;
 
-	  //set register by argument
-      stack = arg;
-	  p->tf->eip = *(uint *)function;
-	  p->tf->esp = *((uint*)stack+4);
+	acquire(&ptable.lock);
+	p->state = RUNNABLE;
+	release(&ptable.lock);
 
-	  //sti();
+	safestrcpy(p->name, proc->name, sizeof(proc->name));
+	p->tid = proc->tid + proc->tidcounter++;
+	p->priority = priority;
+	tid = p->tid;
 
-	  return p->tid;
+	return tid;
 }
 
 void thread_exit(void *retval){
+	int fd;
+	struct proc *p;
+
+	if(proc->tref != 0){//not main thread
+	    kfree(proc->kstack);
+        proc->kstack = 0;
+        proc->state = UNUSED;
+        proc->pid = 0;
+        proc->parent = 0;
+        proc->name[0] = 0;
+        proc->killed = 0;
+
+        *(int*)retval= proc->tid;
+	} else{//close file table
+
+		for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+			if ( p->pgdir != proc->pgdir)//if not in same process 
+	    		continue;
+
+	        kfree(p->kstack);
+	        p->kstack = 0;
+	        p->state = UNUSED;
+	        p->pid = 0;
+	        p->parent = 0;
+	        p->name[0] = 0;
+	        p->killed = 0;
+		}
+
+	    // Close all open files.
+        for(fd = 0; fd < NOFILE; fd++){
+          if(proc->ofile[fd]){
+            fileclose(proc->ofile[fd]);
+            proc->ofile[fd] = 0;
+          }
+        }
+
+		*(int*)retval = proc->tid;
+	}
 }
 
 int thread_join(int tid, void **retval){
-	return -1;
+  struct proc *p;
+  int pid;
+
+  acquire(&ptable.lock);
+  for(;;) {
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if ( p->pgdir != proc->pgdir || proc->tid == p->tid)//if me or not in same process 
+        continue;
+
+      if(p->tid == tid){
+      	 if(p->state == UNUSED){
+      	 	return -1;
+      	 }
+      }
+
+      if ( ( p->state == ZOMBIE ) && ( p->tid == tid ) ) {
+        // get pid of zombie child to return
+        pid = p->pid;
+        int *tmp = (int*) 0x1FD8;
+
+        void *stackAddr = (void *)p->parent->tf->esp + 7*sizeof(void *);
+        *(uint *)stackAddr = p->tf->ebp;
+        *(uint *)stackAddr += 3 * sizeof(void *) - PGSIZE;
+
+        kfree(p->kstack);
+        p->kstack = 0;
+        p->state = UNUSED;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        // Get stack of the zombie child thread to return
+        *retval = p->stack;
+        *tmp = pid;
+        release(&ptable.lock);
+        return 0;
+      }
+    }
+
+    // killed
+    if (proc->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(proc, &ptable.lock);
+
+  }
+  return -1;
 }
 
 int gettid(void){
-	return -1;
+	return proc->tid;
 }

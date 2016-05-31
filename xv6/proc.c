@@ -19,6 +19,7 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+struct spinlock lc;
 
 void
 pinit(void)
@@ -31,7 +32,7 @@ pinit(void)
 // If found, change state to EMBRYO and initialize
 // state required to run in the kernel.
 // Otherwise return 0.
-static struct proc*
+struct proc*
 allocproc(void)
 {
   struct proc *p;
@@ -48,7 +49,13 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   release(&ptable.lock);
+
+  p->priority = 20;
+  p->tidcounter = 0;
+  p->refcounter = 0;
+  p->tid = p->pid;
   p->tref = 0;
+  p->killed = 0;
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
@@ -96,7 +103,7 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
-  p->priority=20;
+  p->priority = 20;
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -110,6 +117,8 @@ int
 growproc(int n)
 {
   uint sz;
+  struct proc *p;
+  pde_t *temp = proc->pgdir;
   
   sz = proc->sz;
   if(n > 0){
@@ -121,6 +130,18 @@ growproc(int n)
   }
   proc->sz = sz;
   switchuvm(proc);
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pgdir == temp){
+        p->sz = sz;
+        acquire(&lc);
+        switchuvm(p);
+        release(&lc);
+    }
+  }
+  release(&ptable.lock);
+
   return 0;
 }
 
@@ -147,6 +168,7 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
+  np->priority = proc->priority;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -180,14 +202,6 @@ exit(void)
   if(proc == initproc)
     panic("init exiting");
 
-  // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
-    if(proc->ofile[fd]){
-      fileclose(proc->ofile[fd]);
-      proc->ofile[fd] = 0;
-    }
-  }
-
   begin_op();
   iput(proc->cwd);
   end_op();
@@ -205,6 +219,29 @@ exit(void)
       if(p->state == ZOMBIE)
         wakeup1(initproc);
     }
+  }
+
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {//close threads
+    if ( p->pgdir != proc->pgdir)//if not in same process 
+        continue;
+
+        kfree(p->kstack);
+        p->kstack = 0;
+        p->state = UNUSED;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+
+        if(p->tref == 0){//main thread
+            // Close all open files.
+            for(fd = 0; fd < NOFILE; fd++){
+              if(p->ofile[fd]){
+                fileclose(p->ofile[fd]);
+                p->ofile[fd] = 0;
+              }
+            }
+        }
   }
 
   // Jump into the scheduler, never to return.
@@ -268,6 +305,7 @@ void
 scheduler(void)
 {
   struct proc *p;
+  int priority;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -275,6 +313,16 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+    priority=40;
+    //calculate lowest nice value(highest priority)
+     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if( (p->state != RUNNABLE) ){
+        continue;
+      } else if( p->priority < priority ){
+        priority = p->priority;
+      }
+    }
+  
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
@@ -282,18 +330,27 @@ scheduler(void)
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, proc->context);
-      switchkvm();
+      if(p->priority == priority){
+        proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+        swtch(&cpu->scheduler, proc->context);
+        switchkvm();
+    } else{
+      continue;
+    }
+
+      //if process changed to lower priority by setnice
+      if(proc->priority < priority){
+        break;
+      }
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       proc = 0;
     }
-    release(&ptable.lock);
 
+    release(&ptable.lock);
   }
 }
 
